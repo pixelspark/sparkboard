@@ -1,17 +1,17 @@
-use spidev::{Spidev};
-use rppal::gpio::{OutputPin, InputPin};
-use rppal::{gpio::Level};
-use std::thread::{sleep};
-use std::time::Duration;
+use rppal::gpio::Level;
+use rppal::gpio::{InputPin, OutputPin};
+use spidev::Spidev;
 use std::error::Error;
 use std::io::prelude::*;
+use std::thread::sleep;
+use std::time::Duration;
 
 pub struct EPD {
 	pub(crate) spi: Spidev,
 	pub(crate) busy: InputPin,
 	pub(crate) cs: OutputPin,
 	pub(crate) dc: OutputPin,
-	pub(crate) rst: OutputPin
+	pub(crate) rst: OutputPin,
 }
 
 impl EPD {
@@ -28,9 +28,13 @@ impl EPD {
 
 	pub fn send(&mut self, cmd: u8, data: &[u8]) -> Result<(), Box<dyn Error>> {
 		if data.len() > 10 {
-			log::debug!("send {:02x?} with data {:02x?} (len={:?})", cmd, &data[0..10], data.len());
-		}
-		else {
+			log::debug!(
+				"send {:02x?} with data {:02x?} (len={:?})",
+				cmd,
+				&data[0..10],
+				data.len()
+			);
+		} else {
 			log::debug!("send {:02x?} with data {:02x?}", cmd, data);
 		}
 		self.send_command(cmd)?;
@@ -69,7 +73,12 @@ impl EPD {
 	pub fn wait_until_idle(&mut self) -> Result<(), Box<dyn Error>> {
 		//assert!(self.busy.is_high(), "expect busy pin to be high before waiting until idle");
 		let mut n = 0;
-		log::debug!("wait_until_idle busy={:?} {:?} {:?}", self.busy.read(), self.busy.read(), self.busy.read());
+		log::debug!(
+			"wait_until_idle busy={:?} {:?} {:?}",
+			self.busy.read(),
+			self.busy.read(),
+			self.busy.read()
+		);
 		loop {
 			n += 1;
 			self.send_command(0x71)?;

@@ -1,10 +1,10 @@
-use embedded_graphics::prelude::*;
 use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::*;
 
 pub struct Surface {
 	buffer: Vec<u8>,
 	width: u32,
-	height: u32
+	height: u32,
 }
 
 impl Surface {
@@ -12,7 +12,7 @@ impl Surface {
 		Surface {
 			buffer: vec![0; (width * height) as usize / 8],
 			width,
-			height
+			height,
 		}
 	}
 

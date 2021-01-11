@@ -1,13 +1,13 @@
-use spidev::{Spidev};
-use rppal::gpio::{OutputPin, InputPin};
-use std::thread::{sleep};
-use std::time::Duration;
+use rppal::gpio::{InputPin, OutputPin};
+use spidev::Spidev;
 use std::error::Error;
+use std::thread::sleep;
+use std::time::Duration;
 
 use crate::epd::EPD;
 
 pub struct EPD7in5v2 {
-	epd: EPD
+	epd: EPD,
 }
 
 const EPD7IN5V2_WIDTH: usize = 800;
@@ -16,13 +16,7 @@ const EPD7IN5V2_HEIGHT: usize = 480;
 impl EPD7in5v2 {
 	pub fn new(spi: Spidev, busy: InputPin, cs: OutputPin, dc: OutputPin, rst: OutputPin) -> EPD7in5v2 {
 		EPD7in5v2 {
-			epd: EPD {
-				spi,
-				busy,
-				cs,
-				dc,
-				rst
-			}
+			epd: EPD { spi, busy, cs, dc, rst },
 		}
 	}
 
@@ -47,7 +41,7 @@ impl EPD7in5v2 {
 		self.epd.send(0x15, &[0x00])?;
 		self.epd.send(0x50, &[0x10, 0x07])?; // VCOM, data interval settings
 
-		self.epd.send(0x60, &[0x22])?;	// TCON setting
+		self.epd.send(0x60, &[0x22])?; // TCON setting
 		self.epd.send(0x65, &[0x00, 0x00, 0x00, 0x00])?; // Resolution setting. 800x480
 
 		Ok(())
@@ -56,8 +50,7 @@ impl EPD7in5v2 {
 	pub fn clear(&mut self, black: bool) -> Result<(), Box<dyn Error>> {
 		let width = if EPD7IN5V2_WIDTH % 8 == 0 {
 			EPD7IN5V2_WIDTH / 8
-		}
-		else {
+		} else {
 			EPD7IN5V2_WIDTH / 8 + 1
 		};
 		let height = EPD7IN5V2_HEIGHT;
@@ -69,8 +62,7 @@ impl EPD7in5v2 {
 		if black {
 			//self.send(0x10, &zeroes)?;
 			self.epd.send(0x13, &ffs)?;
-		}
-		else {
+		} else {
 			self.epd.send(0x10, &zeroes)?;
 			self.epd.send(0x13, &zeroes)?;
 		}

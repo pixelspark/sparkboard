@@ -1,13 +1,13 @@
-use spidev::{Spidev};
-use rppal::gpio::{OutputPin, InputPin};
-use std::thread::{sleep};
-use std::time::Duration;
+use rppal::gpio::{InputPin, OutputPin};
+use spidev::Spidev;
 use std::error::Error;
+use std::thread::sleep;
+use std::time::Duration;
 
 use crate::epd::EPD;
 
 pub struct EPD7in5bc {
-	epd: EPD
+	epd: EPD,
 }
 
 const EPD7IN5BC_WIDTH: usize = 640;
@@ -16,13 +16,7 @@ const EPD7IN5BC_HEIGHT: usize = 384;
 impl EPD7in5bc {
 	pub fn new(spi: Spidev, busy: InputPin, cs: OutputPin, dc: OutputPin, rst: OutputPin) -> EPD7in5bc {
 		EPD7in5bc {
-			epd: EPD {
-				spi,
-				busy,
-				cs,
-				dc,
-				rst
-			}
+			epd: EPD { spi, busy, cs, dc, rst },
 		}
 	}
 
@@ -45,12 +39,15 @@ impl EPD7in5bc {
 		self.epd.send(0x50, &[0x77])?; // VCOM AND DATA INTERVAL SETTING
 		self.epd.send(0x60, &[0x22])?; // TCON_SETTING
 		self.epd.send(0x65, &[0x00])?; // FLASH CONTROL
-		self.epd.send(0x61, &[
-			(EPD7IN5BC_WIDTH >> 8) as u8,
-			(EPD7IN5BC_WIDTH & 0xFF) as u8,
-			(EPD7IN5BC_HEIGHT >> 8) as u8,
-			(EPD7IN5BC_HEIGHT & 0xFF) as u8
-		])?; // TCON_RESOLUTION
+		self.epd.send(
+			0x61,
+			&[
+				(EPD7IN5BC_WIDTH >> 8) as u8,
+				(EPD7IN5BC_WIDTH & 0xFF) as u8,
+				(EPD7IN5BC_HEIGHT >> 8) as u8,
+				(EPD7IN5BC_HEIGHT & 0xFF) as u8,
+			],
+		)?; // TCON_RESOLUTION
 		self.epd.send(0xE5, &[0x03])?; // FLASH MODE
 		Ok(())
 	}
@@ -60,7 +57,9 @@ impl EPD7in5bc {
 		let height = EPD7IN5BC_HEIGHT;
 		log::debug!("clear w={:?} h={:?}", width, height);
 
-		let pixels = vec![0x33 as u8; height * width * 4];
+		// Two pixels per byte; 0x3 | 0x03 are two consecutive white pixels, 0x00 are two consecutive black pixels
+		let pixel = if black { 0x00 } else { 0x33 };
+		let pixels = vec![pixel as u8; height * width * 4];
 		self.epd.send(0x10, &pixels)?;
 		self.turn_on_display()?;
 		Ok(())
@@ -79,7 +78,7 @@ impl EPD7in5bc {
 		let mut full_image = vec![0x00; full_size]; // one byte for two pixels: 0=black, 3=white, 4=color; 0x44 = two adjacent color pixels
 		let mut i = 0;
 		for y in 0..EPD7IN5BC_HEIGHT {
-			for x in (0..(EPD7IN5BC_WIDTH / 8)) {
+			for x in 0..(EPD7IN5BC_WIDTH / 8) {
 				let eight_pixels_black = black_buffer[y * (EPD7IN5BC_WIDTH / 8) + x];
 				let eight_pixels_color = color_buffer[y * (EPD7IN5BC_WIDTH / 8) + x];
 
@@ -88,8 +87,19 @@ impl EPD7in5bc {
 					let right_black = ((eight_pixels_black << (k + 1)) & 0x80) != 0;
 					let left_color = ((eight_pixels_color << k) & 0x80) != 0;
 					let right_color = ((eight_pixels_color << (k + 1)) & 0x80) != 0;
-					let pixel = if left_color { 0x40 } else if left_black { 0x00 } else { 0x30 } |
-						if right_color { 0x04 } else if right_black { 0x00 } else { 0x03 };
+					let pixel = if left_color {
+						0x40
+					} else if left_black {
+						0x00
+					} else {
+						0x30
+					} | if right_color {
+						0x04
+					} else if right_black {
+						0x00
+					} else {
+						0x03
+					};
 					full_image[i] = pixel;
 					i += 1;
 				}
