@@ -4,7 +4,7 @@ use std::error::Error;
 use std::thread::sleep;
 use std::time::Duration;
 
-use crate::epd::{EPD, EPDDisplay};
+use crate::epd::{EPDDisplay, EPD};
 
 pub struct EPD7in5bc {
 	epd: EPD,
@@ -13,7 +13,7 @@ pub struct EPD7in5bc {
 const EPD7IN5BC_WIDTH: usize = 640;
 const EPD7IN5BC_HEIGHT: usize = 384;
 
-static ZEROES: &[u8] = &[0 as u8; (EPD7IN5BC_WIDTH * EPD7IN5BC_HEIGHT/ 8) as usize];
+static ZEROES: &[u8] = &[0 as u8; (EPD7IN5BC_WIDTH * EPD7IN5BC_HEIGHT / 8) as usize];
 
 impl EPD7in5bc {
 	pub fn new(spi: Spidev, busy: InputPin, cs: OutputPin, dc: OutputPin, rst: OutputPin) -> EPD7in5bc {

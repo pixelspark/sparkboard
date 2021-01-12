@@ -1,10 +1,10 @@
 use rppal::gpio::Gpio;
 use spidev::{SpiModeFlags, Spidev, SpidevOptions};
 use std::error::Error;
+use std::process::Command;
+use std::str::FromStr;
 use std::thread::sleep;
 use std::time::Duration;
-use std::str::FromStr;
-use std::process::Command;
 
 mod epd;
 mod epd7in5_v2;
@@ -14,9 +14,9 @@ mod graphics;
 
 use chrono::prelude::*;
 use clap::{App, Arg, SubCommand};
+use epd::EPDDisplay;
 use epd7in5_v2::EPD7in5v2;
 use epd7in5bc::EPD7in5bc;
-use epd::EPDDisplay;
 use fetch::fetch;
 use graphics::Surface;
 
@@ -54,23 +54,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 				.possible_value("7in5v2")
 				.possible_value("7in5bc")
 				.default_value("7in5v2")
-				.takes_value(true)
+				.takes_value(true),
 		)
 		.subcommand(SubCommand::with_name("test").about("perform tests"))
 		.subcommand(
 			SubCommand::with_name("fetch")
 				.about("Periodically fetch a PNG image from a URL and display")
-				.arg(Arg::with_name("interval")
-					.short("i")
-					.long("interval")
-					.value_name("SECONDS")
-					.help("Number of seconds to wait between each fetch (excludes time taken by e-Paper to refresh)")
-					.default_value("0")
+				.arg(
+					Arg::with_name("interval")
+						.short("i")
+						.long("interval")
+						.value_name("SECONDS")
+						.help(
+							"Number of seconds to wait between each fetch (excludes time taken by e-Paper to refresh)",
+						)
+						.default_value("0"),
 				)
-				.arg(Arg::with_name("wifi")
-					.long("wifi")
-					.value_name("INTERFACE")
-					.help("Wait until Wi-Fi interface connects")
+				.arg(
+					Arg::with_name("wifi")
+						.long("wifi")
+						.value_name("INTERFACE")
+						.help("Wait until Wi-Fi interface connects"),
 				)
 				.arg(Arg::with_name("url").takes_value(true).help("URL to fetch")),
 		)
@@ -113,13 +117,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 		let interval = u64::from_str(subcommand_matches.value_of("interval").unwrap())?;
 
 		let mut display: Box<dyn EPDDisplay> = match device_type {
-			"7in5bc" => {
-				Box::new(EPD7in5bc::new(spi, busy, cs, dc, rst))
-				
-			}
-			"7in5v2" => {
-				Box::new(EPD7in5v2::new(spi, busy, cs, dc, rst))
-			}
+			"7in5bc" => Box::new(EPD7in5bc::new(spi, busy, cs, dc, rst)),
+			"7in5v2" => Box::new(EPD7in5v2::new(spi, busy, cs, dc, rst)),
 			_ => panic!("invalid device type: {:?}", device_type),
 		};
 
@@ -137,7 +136,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 					display.draw(&buffer)?;
 					sleep(Duration::from_millis(500));
 					display.sleep()?;
-				},
+				}
 				Err(e) => {
 					log::error!("fetch of {:?} failed: {:?}", url, e);
 					display_string(&mut display, &format!("fetch failed: {:?}", e))?;
@@ -147,9 +146,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 			if interval > 0 {
 				log::info!("sleeping for {:?} seconds", interval);
 				sleep(Duration::from_secs(interval));
-			}
-			else {
-				return Ok(())
+			} else {
+				return Ok(());
 			}
 		}
 	}
@@ -163,14 +161,15 @@ fn wait_for_wifi(display: &mut Box<dyn EPDDisplay>, interface: &str) -> Result<(
 		let wifi_status = Command::new("/usr/bin/wpa_cli")
 			.arg(&format!("-i{}", interface))
 			.arg("-s/var/run/wpa_supplicant")
-			.arg("status").output()?;
+			.arg("status")
+			.output()?;
 		log::info!("wifi: status={:?}", wifi_status);
 
 		let status_string = String::from_utf8(wifi_status.stdout).unwrap();
 		if status_string.contains("wpa_state=COMPLETED\n") {
 			// Still scanning
 			log::info!("Not scanning anymore!");
-			return Ok(())
+			return Ok(());
 		}
 
 		display_string(display, &status_string)?;
@@ -185,12 +184,12 @@ fn display_string(display: &mut Box<dyn EPDDisplay>, text: &str) -> Result<(), B
 	for txt in text.chars().collect::<Vec<char>>().chunks(100) {
 		let line = txt.iter().collect::<String>();
 		let _ = Text::new(&line, Point::new(10, y))
-		.into_styled(text_style!(
-			font = Font6x12,
-			text_color = BinaryColor::Off,
-			background_color = BinaryColor::On
-		))
-		.draw(&mut image);
+			.into_styled(text_style!(
+				font = Font6x12,
+				text_color = BinaryColor::Off,
+				background_color = BinaryColor::On
+			))
+			.draw(&mut image);
 		y += 14;
 	}
 

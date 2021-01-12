@@ -1,9 +1,9 @@
+use crate::epd::{EPDDisplay, EPD};
 use rppal::gpio::{InputPin, OutputPin};
 use spidev::Spidev;
 use std::error::Error;
 use std::thread::sleep;
 use std::time::Duration;
-use crate::epd::{EPD, EPDDisplay};
 pub struct EPD7in5v2 {
 	epd: EPD,
 }
@@ -98,5 +98,4 @@ impl EPDDisplay for EPD7in5v2 {
 
 		Ok(())
 	}
-
 }
