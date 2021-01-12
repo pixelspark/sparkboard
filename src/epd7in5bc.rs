@@ -4,7 +4,7 @@ use std::error::Error;
 use std::thread::sleep;
 use std::time::Duration;
 
-use crate::epd::EPD;
+use crate::epd::{EPD, EPDDisplay};
 
 pub struct EPD7in5bc {
 	epd: EPD,
@@ -13,43 +13,13 @@ pub struct EPD7in5bc {
 const EPD7IN5BC_WIDTH: usize = 640;
 const EPD7IN5BC_HEIGHT: usize = 384;
 
+static ZEROES: &[u8] = &[0 as u8; (EPD7IN5BC_WIDTH * EPD7IN5BC_HEIGHT/ 8) as usize];
+
 impl EPD7in5bc {
 	pub fn new(spi: Spidev, busy: InputPin, cs: OutputPin, dc: OutputPin, rst: OutputPin) -> EPD7in5bc {
 		EPD7in5bc {
 			epd: EPD { spi, busy, cs, dc, rst },
 		}
-	}
-
-	pub fn width() -> usize {
-		EPD7IN5BC_WIDTH
-	}
-
-	pub fn height() -> usize {
-		EPD7IN5BC_HEIGHT
-	}
-
-	// https://github.com/waveshare/e-Paper/blob/master/RaspberryPi_JetsonNano/c/lib/e-Paper/EPD_7in5bc.c#L161
-	pub fn init(&mut self) -> Result<(), Box<dyn Error>> {
-		self.epd.reset();
-		self.epd.send(0x01, &[0x37, 0x00])?; // POWER_SETTING
-		self.epd.send(0x00, &[0xCF, 0x08])?; // PANEL_SETTING
-		self.epd.send(0x30, &[0x3A])?; // PLL_CONTROL
-		self.epd.send(0x82, &[0x28])?; // VCM_DC_SETTING: all temperature range
-		self.epd.send(0x06, &[0xC7, 0xCC, 0x15])?; // BOOSTER_SOFT_START
-		self.epd.send(0x50, &[0x77])?; // VCOM AND DATA INTERVAL SETTING
-		self.epd.send(0x60, &[0x22])?; // TCON_SETTING
-		self.epd.send(0x65, &[0x00])?; // FLASH CONTROL
-		self.epd.send(
-			0x61,
-			&[
-				(EPD7IN5BC_WIDTH >> 8) as u8,
-				(EPD7IN5BC_WIDTH & 0xFF) as u8,
-				(EPD7IN5BC_HEIGHT >> 8) as u8,
-				(EPD7IN5BC_HEIGHT & 0xFF) as u8,
-			],
-		)?; // TCON_RESOLUTION
-		self.epd.send(0xE5, &[0x03])?; // FLASH MODE
-		Ok(())
 	}
 
 	pub fn clear(&mut self, black: bool) -> Result<(), Box<dyn Error>> {
@@ -66,7 +36,7 @@ impl EPD7in5bc {
 	}
 
 	// https://github.com/waveshare/e-Paper/blob/master/RaspberryPi_JetsonNano/c/lib/e-Paper/EPD_7in5bc.c#L229
-	pub fn draw(&mut self, black_buffer: &[u8], color_buffer: &[u8]) -> Result<(), Box<dyn Error>> {
+	pub fn draw_bichromatic(&mut self, black_buffer: &[u8], color_buffer: &[u8]) -> Result<(), Box<dyn Error>> {
 		if black_buffer.len() != (EPD7IN5BC_HEIGHT * EPD7IN5BC_WIDTH / 8) {
 			panic!("invalid buffer size");
 		}
@@ -122,12 +92,50 @@ impl EPD7in5bc {
 		log::debug!("turn_on_display done");
 		Ok(())
 	}
+}
+
+impl EPDDisplay for EPD7in5bc {
+	// https://github.com/waveshare/e-Paper/blob/master/RaspberryPi_JetsonNano/c/lib/e-Paper/EPD_7in5bc.c#L161
+	fn init(&mut self) -> Result<(), Box<dyn Error>> {
+		self.epd.reset();
+		self.epd.send(0x01, &[0x37, 0x00])?; // POWER_SETTING
+		self.epd.send(0x00, &[0xCF, 0x08])?; // PANEL_SETTING
+		self.epd.send(0x30, &[0x3A])?; // PLL_CONTROL
+		self.epd.send(0x82, &[0x28])?; // VCM_DC_SETTING: all temperature range
+		self.epd.send(0x06, &[0xC7, 0xCC, 0x15])?; // BOOSTER_SOFT_START
+		self.epd.send(0x50, &[0x77])?; // VCOM AND DATA INTERVAL SETTING
+		self.epd.send(0x60, &[0x22])?; // TCON_SETTING
+		self.epd.send(0x65, &[0x00])?; // FLASH CONTROL
+		self.epd.send(
+			0x61,
+			&[
+				(EPD7IN5BC_WIDTH >> 8) as u8,
+				(EPD7IN5BC_WIDTH & 0xFF) as u8,
+				(EPD7IN5BC_HEIGHT >> 8) as u8,
+				(EPD7IN5BC_HEIGHT & 0xFF) as u8,
+			],
+		)?; // TCON_RESOLUTION
+		self.epd.send(0xE5, &[0x03])?; // FLASH MODE
+		Ok(())
+	}
 
 	// https://github.com/waveshare/e-Paper/blob/master/RaspberryPi_JetsonNano/c/lib/e-Paper/EPD_7in5bc.c#L325
-	pub fn sleep(&mut self) -> Result<(), Box<dyn Error>> {
+	fn sleep(&mut self) -> Result<(), Box<dyn Error>> {
 		self.epd.send_command(0x02)?; // Power off
 		self.epd.wait_until_idle()?;
 		self.epd.send(0x07, &[0xA5])?; // deep sleep
 		Ok(())
+	}
+
+	fn width(&self) -> usize {
+		EPD7IN5BC_WIDTH
+	}
+
+	fn height(&self) -> usize {
+		EPD7IN5BC_HEIGHT
+	}
+
+	fn draw(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>> {
+		self.draw_bichromatic(buffer, ZEROES)
 	}
 }

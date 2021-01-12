@@ -14,6 +14,14 @@ pub struct EPD {
 	pub(crate) rst: OutputPin,
 }
 
+pub trait EPDDisplay {
+	fn init(&mut self) -> Result<(), Box<dyn Error>>;
+	fn sleep(&mut self) -> Result<(), Box<dyn Error>>;
+	fn draw(&mut self, buffer: &[u8]) -> Result<(), Box<dyn Error>>;
+	fn width(&self) -> usize;
+	fn height(&self) -> usize;
+}
+
 impl EPD {
 	pub fn spi_transfer(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
 		self.cs.set_low();

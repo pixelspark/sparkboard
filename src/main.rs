@@ -3,6 +3,8 @@ use spidev::{SpiModeFlags, Spidev, SpidevOptions};
 use std::error::Error;
 use std::thread::sleep;
 use std::time::Duration;
+use std::str::FromStr;
+use std::process::Command;
 
 mod epd;
 mod epd7in5_v2;
@@ -14,11 +16,12 @@ use chrono::prelude::*;
 use clap::{App, Arg, SubCommand};
 use epd7in5_v2::EPD7in5v2;
 use epd7in5bc::EPD7in5bc;
+use epd::EPDDisplay;
 use fetch::fetch;
 use graphics::Surface;
 
 use embedded_graphics::{
-	fonts::{Font12x16, Text},
+	fonts::{Font12x16, Font6x12, Text},
 	pixelcolor::BinaryColor,
 	prelude::*,
 	primitives::Circle,
@@ -37,7 +40,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 			Arg::with_name("device")
 				.short("d")
 				.long("config")
-				.value_name("/dev/spidev0.0")
+				.default_value("/dev/spidev0.0")
+				.value_name("PATH")
 				.help("SPI device to use")
 				.takes_value(true),
 		)
@@ -45,14 +49,29 @@ fn main() -> Result<(), Box<dyn Error>> {
 			Arg::with_name("type")
 				.short("t")
 				.long("type")
-				.value_name("7in5v2")
-				.help("Type of device. Acceptable values are: 7in5bc, 7in5v2")
-				.takes_value(true),
+				.value_name("DEVICETYPE")
+				.help("Type of device")
+				.possible_value("7in5v2")
+				.possible_value("7in5bc")
+				.default_value("7in5v2")
+				.takes_value(true)
 		)
 		.subcommand(SubCommand::with_name("test").about("perform tests"))
 		.subcommand(
 			SubCommand::with_name("fetch")
-				.about("fetch PNG and display")
+				.about("Periodically fetch a PNG image from a URL and display")
+				.arg(Arg::with_name("interval")
+					.short("i")
+					.long("interval")
+					.value_name("SECONDS")
+					.help("Number of seconds to wait between each fetch (excludes time taken by e-Paper to refresh)")
+					.default_value("0")
+				)
+				.arg(Arg::with_name("wifi")
+					.long("wifi")
+					.value_name("INTERFACE")
+					.help("Wait until Wi-Fi interface connects")
+				)
 				.arg(Arg::with_name("url").takes_value(true).help("URL to fetch")),
 		)
 		.get_matches();
@@ -91,27 +110,92 @@ fn main() -> Result<(), Box<dyn Error>> {
 		}
 	} else if let Some(subcommand_matches) = matches.subcommand_matches("fetch") {
 		let url = subcommand_matches.value_of("url").expect("please provide a URL");
-		let buffer = fetch(url)?;
-		match device_type {
+		let interval = u64::from_str(subcommand_matches.value_of("interval").unwrap())?;
+
+		let mut display: Box<dyn EPDDisplay> = match device_type {
 			"7in5bc" => {
-				let mut display = EPD7in5bc::new(spi, busy, cs, dc, rst);
-				display.init()?;
-				let zeroes = vec![0x00; EPD7in5bc::width() * EPD7in5bc::height() / 8];
-				display.draw(&buffer, &zeroes)?;
-				sleep(Duration::from_millis(500));
-				display.sleep()?;
+				Box::new(EPD7in5bc::new(spi, busy, cs, dc, rst))
+				
 			}
 			"7in5v2" => {
-				let mut display = EPD7in5v2::new(spi, busy, cs, dc, rst);
-				display.init()?;
-				display.draw(&buffer)?;
-				sleep(Duration::from_millis(500));
-				display.sleep()?;
+				Box::new(EPD7in5v2::new(spi, busy, cs, dc, rst))
 			}
 			_ => panic!("invalid device type: {:?}", device_type),
+		};
+
+		if let Some(wifi) = subcommand_matches.value_of("wifi") {
+			log::info!("wait for Wi-Fi device {:?}...", wifi);
+			wait_for_wifi(&mut display, wifi)?;
+		}
+
+		loop {
+			log::info!("fetching new image from {:?}", url);
+			match fetch(url) {
+				Ok(buffer) => {
+					log::info!("displaying new image");
+					display.init()?;
+					display.draw(&buffer)?;
+					sleep(Duration::from_millis(500));
+					display.sleep()?;
+				},
+				Err(e) => {
+					log::error!("fetch of {:?} failed: {:?}", url, e);
+					display_string(&mut display, &format!("fetch failed: {:?}", e))?;
+				}
+			}
+
+			if interval > 0 {
+				log::info!("sleeping for {:?} seconds", interval);
+				sleep(Duration::from_secs(interval));
+			}
+			else {
+				return Ok(())
+			}
 		}
 	}
 
+	Ok(())
+}
+
+fn wait_for_wifi(display: &mut Box<dyn EPDDisplay>, interface: &str) -> Result<(), Box<dyn Error>> {
+	loop {
+		// Check Wi-Fi status
+		let wifi_status = Command::new("/usr/bin/wpa_cli")
+			.arg(&format!("-i{}", interface))
+			.arg("-s/var/run/wpa_supplicant")
+			.arg("status").output()?;
+		log::info!("wifi: status={:?}", wifi_status);
+
+		let status_string = String::from_utf8(wifi_status.stdout).unwrap();
+		if status_string.contains("wpa_state=COMPLETED\n") {
+			// Still scanning
+			log::info!("Not scanning anymore!");
+			return Ok(())
+		}
+
+		display_string(display, &status_string)?;
+	}
+}
+
+fn display_string(display: &mut Box<dyn EPDDisplay>, text: &str) -> Result<(), Box<dyn Error>> {
+	display.init()?;
+	let mut image = Surface::new(display.width() as u32, display.height() as u32);
+
+	let mut y = 10;
+	for txt in text.chars().collect::<Vec<char>>().chunks(100) {
+		let line = txt.iter().collect::<String>();
+		let _ = Text::new(&line, Point::new(10, y))
+		.into_styled(text_style!(
+			font = Font6x12,
+			text_color = BinaryColor::Off,
+			background_color = BinaryColor::On
+		))
+		.draw(&mut image);
+		y += 14;
+	}
+
+	display.draw(image.buffer())?;
+	display.sleep()?;
 	Ok(())
 }
 
@@ -120,7 +204,7 @@ fn test_7in5v2(display: &mut EPD7in5v2) -> Result<(), Box<dyn Error>> {
 	display.clear(false)?;
 	sleep(Duration::from_millis(500));
 
-	let mut image = Surface::new(EPD7in5v2::width() as u32, EPD7in5v2::height() as u32);
+	let mut image = Surface::new(display.width() as u32, display.height() as u32);
 
 	loop {
 		let _ = Text::new("Sparkboard (C) Pixelspark, 2021", Point::new(10, 10))
@@ -143,8 +227,8 @@ fn test_7in5v2(display: &mut EPD7in5v2) -> Result<(), Box<dyn Error>> {
 			))
 			.draw(&mut image);
 
-		let w = EPD7in5v2::width() as i32;
-		let h = EPD7in5v2::height() as i32;
+		let w = display.width() as i32;
+		let h = display.height() as i32;
 		let _ = Circle::new(Point::new(w - 20, h - 20), 10)
 			.into_styled(PrimitiveStyle::with_stroke(BinaryColor::Off, 1))
 			.draw(&mut image);
@@ -163,8 +247,8 @@ fn test_7in5bc(display: &mut EPD7in5bc) -> Result<(), Box<dyn Error>> {
 	display.clear(false)?;
 	sleep(Duration::from_millis(500));
 
-	let mut image = Surface::new(EPD7in5bc::width() as u32, EPD7in5bc::height() as u32);
-	let mut color_image = Surface::new(EPD7in5bc::width() as u32, EPD7in5bc::height() as u32);
+	let mut image = Surface::new(display.width() as u32, display.height() as u32);
+	let mut color_image = Surface::new(display.width() as u32, display.height() as u32);
 
 	loop {
 		let _ = Text::new("Sparkboard (C) Pixelspark, 2021", Point::new(10, 10))
@@ -187,7 +271,7 @@ fn test_7in5bc(display: &mut EPD7in5bc) -> Result<(), Box<dyn Error>> {
 			))
 			.draw(&mut color_image);
 
-		display.draw(image.buffer(), color_image.buffer())?;
+		display.draw_bichromatic(image.buffer(), color_image.buffer())?;
 		sleep(Duration::from_millis(500));
 		display.sleep()?;
 		log::debug!("display sleeping");
