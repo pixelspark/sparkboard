@@ -1,6 +1,6 @@
 use rppal::gpio::Gpio;
 use spidev::{SpiModeFlags, Spidev, SpidevOptions};
-use std::error::Error;
+use std::{error::Error};
 use std::process::Command;
 use std::str::FromStr;
 use std::thread::sleep;
@@ -136,18 +136,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 					display.draw(&buffer)?;
 					sleep(Duration::from_millis(500));
 					display.sleep()?;
+
+					if interval > 0 {
+						log::info!("sleeping for {:?} seconds", interval);
+						sleep(Duration::from_secs(interval));
+					} else {
+						return Ok(());
+					}
 				}
 				Err(e) => {
 					log::error!("fetch of {:?} failed: {:?}", url, e);
 					display_string(&mut display, &format!("fetch failed: {:?}", e))?;
+					log::info!("sleeping for five seconds before trying again...");
+					sleep(Duration::from_secs(5));
 				}
-			}
-
-			if interval > 0 {
-				log::info!("sleeping for {:?} seconds", interval);
-				sleep(Duration::from_secs(interval));
-			} else {
-				return Ok(());
 			}
 		}
 	}
@@ -157,6 +159,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn wait_for_wifi(display: &mut Box<dyn EPDDisplay>, interface: &str) -> Result<(), Box<dyn Error>> {
 	loop {
+		log::info!("Waiting for Wi-Fi interface {:?}", interface);
 		// Check Wi-Fi status
 		let wifi_status = Command::new("/usr/bin/wpa_cli")
 			.arg(&format!("-i{}", interface))
@@ -165,14 +168,21 @@ fn wait_for_wifi(display: &mut Box<dyn EPDDisplay>, interface: &str) -> Result<(
 			.output()?;
 		log::info!("wifi: status={:?}", wifi_status);
 
-		let status_string = String::from_utf8(wifi_status.stdout).unwrap();
-		if status_string.contains("wpa_state=COMPLETED\n") {
-			// Still scanning
-			log::info!("Not scanning anymore!");
-			return Ok(());
+		if !wifi_status.status.success() {
+			log::info!("wpa_cli command was not sucessful; try again in a few seconds...");
+			let status_string = String::from_utf8(wifi_status.stdout).unwrap();
+			let message = format!("Waiting for Wi-Fi: {:?}", status_string);
+			display_string(display, &message)?;
 		}
-
-		display_string(display, &status_string)?;
+		else {
+			let status_string = String::from_utf8(wifi_status.stdout).unwrap();
+			if status_string.contains("wpa_state=COMPLETED\n") {
+				// Still scanning
+				log::info!("Not scanning anymore!");
+				return Ok(());
+			}
+			display_string(display, &status_string)?;
+		}
 	}
 }
 
