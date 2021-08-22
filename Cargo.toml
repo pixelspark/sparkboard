@@ -1,6 +1,7 @@
 [package]
 name = "sparkboard"
-version = "0.1.0"
+version = "1.0.0"
+description = "Periodically downloads images over HTTP, dithers them, and displays them on an e-paper display. Runs on Raspberry Pi."
 authors = ["Tommy van der Vorst <tommy@pixelspark.nl>"]
 edition = "2018"
 

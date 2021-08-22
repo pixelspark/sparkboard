@@ -1,5 +1,7 @@
 # Sparkboard
 
+Periodically downloads images over HTTP, dithers them, and displays them on an e-paper display. Runs on Raspberry Pi.
+
 ## Building
 
 Regular build:
@@ -24,3 +26,7 @@ RUST_LOG=info ./sparkboard -t 7in5v2 fetch "http://example.com/image-800x480.png
 # Show a PNG image (must be 640x384 for the bc display)
 RUST_LOG=info ./sparkboard -t 7in5bc fetch "http://example.com/image-640x384.png"
 ````
+
+## License
+
+[MIT](./LICENSE.txt)

@@ -1,6 +1,6 @@
 use rppal::gpio::Gpio;
 use spidev::{SpiModeFlags, Spidev, SpidevOptions};
-use std::{error::Error};
+use std::error::Error;
 use std::process::Command;
 use std::str::FromStr;
 use std::thread::sleep;
@@ -173,8 +173,7 @@ fn wait_for_wifi(display: &mut Box<dyn EPDDisplay>, interface: &str) -> Result<(
 			let status_string = String::from_utf8(wifi_status.stdout).unwrap();
 			let message = format!("Waiting for Wi-Fi: {:?}", status_string);
 			display_string(display, &message)?;
-		}
-		else {
+		} else {
 			let status_string = String::from_utf8(wifi_status.stdout).unwrap();
 			if status_string.contains("wpa_state=COMPLETED\n") {
 				// Still scanning
